@@ -16,8 +16,9 @@ import (
 const deviceSSOScope = "device_sso"
 
 type Config struct {
-	Issuer        string
-	SigningSecret string
+	Issuer                        string
+	SigningSecret                 string
+	RequireReconsentOnScopeChange bool
 }
 
 type Client struct {
@@ -45,6 +46,10 @@ type Server struct {
 }
 
 func New(cfg Config) http.Handler {
+	return NewServer(cfg)
+}
+
+func NewServer(cfg Config) *ServerWithMux {
 	s := &Server{
 		cfg:            cfg,
 		deviceProvider: sso.NewHMACDeviceSecretProvider(cfg.SigningSecret),
@@ -64,7 +69,16 @@ func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/oauth/token", s.handleToken)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	return mux
+	return &ServerWithMux{Server: s, mux: mux}
+}
+
+type ServerWithMux struct {
+	*Server
+	mux *http.ServeMux
+}
+
+func (s *ServerWithMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mux.ServeHTTP(w, r)
 }
 
 func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
@@ -263,18 +277,33 @@ func (s *Server) handleTokenExchange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid_client", "unknown client")
 		return
 	}
+	if _, allowed := client.AllowedAuthorizationScopes[deviceSSOScope]; !allowed {
+		writeError(w, http.StatusBadRequest, "invalid_scope", "client is not eligible for native sso")
+		return
+	}
 	for _, sc := range scopes {
 		if _, allowed := client.AllowedAuthorizationScopes[sc]; !allowed {
 			writeError(w, http.StatusBadRequest, "invalid_scope", "scope not allowed for client")
 			return
 		}
 	}
+	requestedScope := normalizeScope(scopes)
+	if s.cfg.RequireReconsentOnScopeChange && requestedScope != session.RawScope {
+		writeJSON(w, http.StatusForbidden, map[string]any{
+			"error":             "interaction_required",
+			"error_description": "scope change requires re-consent",
+			"required_action":   "reconsent",
+			"original_scope":    session.RawScope,
+			"requested_scope":   requestedScope,
+		})
+		return
+	}
 
 	resp := map[string]any{
 		"access_token": randomToken(32),
 		"token_type":   "DPoP",
 		"expires_in":   600,
-		"scope":        normalizeScope(scopes),
+		"scope":        requestedScope,
 	}
 	newIDClaims := map[string]any{
 		"iss":   s.cfg.Issuer,
@@ -283,7 +312,7 @@ func (s *Server) handleTokenExchange(w http.ResponseWriter, r *http.Request) {
 		"exp":   time.Now().Add(10 * time.Minute).Unix(),
 		"iat":   time.Now().Unix(),
 		"sid":   sid,
-		"scope": normalizeScope(scopes),
+		"scope": requestedScope,
 	}
 	newIDToken, err := signMap(newIDClaims, []byte(s.cfg.SigningSecret))
 	if err != nil {

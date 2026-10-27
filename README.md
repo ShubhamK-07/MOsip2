@@ -35,6 +35,9 @@ Optional env vars:
 - `ESIGNET_ISSUER` (default: `http://localhost:8080`)
 - `ESIGNET_SIGNING_SECRET` (default: development-only fallback)
 
+Runtime config in code:
+- `RequireReconsentOnScopeChange` (server config): when enabled, token exchange with a scope different from original consent returns `interaction_required` to trigger re-consent.
+
 ## Test
 
 ```bash
@@ -45,3 +48,9 @@ go test ./...
 ## Notes
 
 This repository started empty, so the implementation is a focused baseline server to satisfy Native SSO core backend behavior from scratch, with in-memory stores and test coverage for critical success/failure paths.
+
+## Additional assets
+
+- Postman collection: `/home/runner/work/MOsip2/MOsip2/postman-collection/native-sso.postman_collection.json`
+- Design notes: `/home/runner/work/MOsip2/MOsip2/docs/native-sso-design.md`
+- API notes: `/home/runner/work/MOsip2/MOsip2/docs/api-native-sso.md`
