@@ -1,0 +1,68 @@
+{
+  "info": {
+    "name": "MOsip2 Native SSO",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Authorization-code login with device_sso and child-app token exchange flow."
+  },
+  "item": [
+    {
+      "name": "1) Super App Login (authorization_code + device_sso)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/x-www-form-urlencoded"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/oauth/token",
+          "host": ["{{baseUrl}}"],
+          "path": ["oauth", "token"]
+        },
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {"key": "grant_type", "value": "authorization_code"},
+            {"key": "client_id", "value": "super-app"},
+            {"key": "scope", "value": "openid profile email device_sso"},
+            {"key": "auth_id", "value": "auth-1"},
+            {"key": "acr", "value": "mosip:idp:acr:otp"},
+            {"key": "sid", "value": "sid-1"},
+            {"key": "cnf_jkt", "value": "jkt-1"}
+          ]
+        },
+        "description": "Returns access_token, id_token and device_secret for Native SSO bootstrap."
+      }
+    },
+    {
+      "name": "2) Child App Silent Login (token_exchange)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/x-www-form-urlencoded"},
+          {"key": "DPoP-JKT", "value": "jkt-1"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/oauth/token",
+          "host": ["{{baseUrl}}"],
+          "path": ["oauth", "token"]
+        },
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {"key": "grant_type", "value": "token_exchange"},
+            {"key": "client_id", "value": "child-app"},
+            {"key": "actor_token_type", "value": "urn:openid:params:token-type:device-secret"},
+            {"key": "actor_token", "value": "{{device_secret}}"},
+            {"key": "subject_token", "value": "{{id_token}}"},
+            {"key": "scope", "value": "openid profile"}
+          ]
+        },
+        "description": "Silent SSO exchange. device_sso scope must not be sent in this request."
+      }
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8080"},
+    {"key": "device_secret", "value": ""},
+    {"key": "id_token", "value": ""}
+  ]
+}
